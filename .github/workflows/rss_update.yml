@@ -1,0 +1,56 @@
+name: RSSフィード更新
+
+on:
+  schedule:
+    - cron: '0 6 * * 5'  # 毎週金曜 6:00 UTC = 15:00 JST
+  workflow_dispatch:
+
+# 権限設定を明示的に追加
+permissions:
+  contents: write  # リポジトリの内容を書き込む権限
+
+jobs:
+  update-rss:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          # トークンを明示的に指定（デフォルトのGITHUB_TOKENを使用）
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Chromeのインストールのみ（ChromeDriverはSelenium Managerが自動管理）
+      - name: Chromeをインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+          google-chrome --version
+
+      - name: 依存ライブラリをインストール
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: RSSフィードを生成
+        run: python generate_rss.py
+
+      - name: 変更をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add rss_feed.xml
+          git diff --staged --quiet || git commit -m "RSSフィードを自動更新 [skip ci]"
+          git push
+        env:
+          # トークンを環境変数として設定
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
